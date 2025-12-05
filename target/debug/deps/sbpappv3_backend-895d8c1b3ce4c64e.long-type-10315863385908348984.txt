@@ -1,0 +1,2 @@
+fn(actix_web::web::Data<AppState>, actix_web::web::Json<RegisterUser>) -> impl std::future::Future<Output = Result<HttpResponse, ApiError>> {register_user}
+fn(actix_web::web::Data<AppState>, actix_web::web::Json<RegisterUser>) -> impl std::future::Future<Output = Result<HttpResponse, ApiError>> {register_user}: HttpServiceFactory
