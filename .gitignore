@@ -1,0 +1,29 @@
+# ===== Rust build output =====
+/target/
+
+# ===== Environment files =====
+.env
+.env.*
+*.env
+
+# ===== Cargo.lock =====
+# Kalau ini aplikasi (bukan library), UNCOMMENT baris berikut
+/Cargo.lock
+
+# ===== Log files =====
+*.log
+
+# ===== OS files =====
+.DS_Store
+Thumbs.db
+
+# ===== IDE & Editor =====
+.vscode/
+.idea/
+*.swp
+*.swo
+*.tmp
+
+# ===== Backup / temp =====
+*~
+*.bak

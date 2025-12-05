@@ -1,2 +1,0 @@
-fn(actix_web::web::Data<AppState>, actix_web::web::Path<std::string::String>) -> impl std::future::Future<Output = Result<HttpResponse, ApiError>> {get_product_by_kode}
-fn(actix_web::web::Data<AppState>, actix_web::web::Path<std::string::String>) -> impl std::future::Future<Output = Result<HttpResponse, ApiError>> {get_product_by_kode}: HttpServiceFactory
