@@ -1,3 +1,4 @@
+// /src/app/dashboard/stokgudang/InventoryDashboardClient.tsx
 "use client";
 
 import React, { useEffect, useState, useMemo } from "react";
@@ -11,6 +12,17 @@ import {
     ChevronDown,
 } from "lucide-react";
 
+import {
+    BarChart,
+    Bar,
+    CartesianGrid,
+    XAxis,
+    YAxis,
+    Tooltip as RechartsTooltip,
+    ResponsiveContainer,
+    Legend,
+} from "recharts";
+
 import Sidebar from "@/components/layout/Sidebar";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
@@ -19,9 +31,9 @@ interface StockItem {
     id: number;
     kode: string;
     nama: string;
-    brand: string;        // NEW
+    brand: string;
     kategori: string;
-    harga_idr: number;    // NEW
+    harga_idr: number;
     stok_sisa: number;
     satuan_nama: string;
     lokasi: string;
@@ -30,12 +42,14 @@ interface StockItem {
 interface Movement {
     id: number;
     stok_id: number;
-    jenis: string;
+    jenis: string; // "MASUK" | "KELUAR"
     qty: number;
     satuan_id: number;
     sumber_tujuan?: string;
     keterangan?: string;
     created_at: string;
+    // optional → akan diisi kalau dari batch-in yang pakai enum jenis_pemasukan
+    jenis_pemasukan?: string | null; // contoh: "PEMBELIAN_PO" | "RETUR_BARANG"
 }
 
 interface Props {
@@ -43,91 +57,296 @@ interface Props {
     initialMovements: Movement[];
 }
 
-const ChartPlaceholder = ({
-    title,
-    icon: Icon,
-    height = "h-[450px]",
-}: {
-    title: string;
-    icon: any;
-    height?: string;
-}) => (
-    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xl h-full">
-        <h2 className="text-xl font-semibold text-slate-800 mb-4 flex items-center gap-2">
-            <Icon size={20} className="text-blue-500" />
-            {title}
-        </h2>
-        <div
-            className={`w-full ${height} bg-slate-50 rounded-xl border border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400 relative overflow-hidden`}
-        >
-            <div className="absolute inset-0 opacity-[0.05] bg-[linear-gradient(to_right,#e2e8f0_1px,transparent_1px),linear-gradient(to_bottom,#e2e8f0_1px,transparent_1px)] bg-[size:20px_20px]" />
-            <BarChart2 size={48} className="mb-2 opacity-50 text-blue-400 z-10" />
-            <p className="font-medium z-10 text-sm">Visualisasi Data Stok</p>
-        </div>
-    </div>
-);
+// Helper format Rupiah full
+const formatIDR = (value: number) =>
+    new Intl.NumberFormat("id-ID", {
+        style: "currency",
+        currency: "IDR",
+        minimumFractionDigits: 0,
+    }).format(value);
 
-// MovementLogCard: hanya 10 data terbaru, TANPA scroll di dalam card
-const MovementLogCard = ({ data }: { data: Movement[] }) => {
-    const latest10 = data.slice(0, 10); // ambil 10 terbaru saja
+// Helper format Rupiah compact (untuk axis)
+const formatIDRCompact = (value: number) =>
+    new Intl.NumberFormat("id-ID", {
+        notation: "compact",
+        maximumFractionDigits: 1,
+    }).format(value);
+
+// Helper format datetime Waktu Indonesia Barat
+const formatDateTimeWIB = (value: string) => {
+    if (!value) return "-";
+    try {
+        const formatted = new Date(value).toLocaleString("id-ID", {
+            timeZone: "Asia/Jakarta",
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+        });
+        return `${formatted} WIB`;
+    } catch {
+        return value;
+    }
+};
+
+// ====== VISUALISASI DATA STOK (BAR CHART) ======
+const StockValueChart = ({ stocks }: { stocks: StockItem[] }) => {
+    const data = useMemo(() => {
+        const enriched = stocks
+            .map((s) => ({
+                kode: s.kode,
+                nama: s.nama,
+                stok_sisa: s.stok_sisa,
+                satuan_nama: s.satuan_nama,
+                harga_idr: s.harga_idr,
+                nilai: s.stok_sisa * s.harga_idr,
+            }))
+            .filter((d) => d.nilai > 0 || d.stok_sisa > 0);
+
+        enriched.sort((a, b) => b.nilai - a.nilai); // terbesar dulu
+        return enriched.slice(0, 10); // top 10
+    }, [stocks]);
+
+    const CustomTooltip = ({ active, payload }: any) => {
+        if (!active || !payload || !payload.length) return null;
+        const item = payload[0].payload;
+
+        return (
+            <div className="rounded-xl bg-white/95 shadow-lg border border-slate-200 px-4 py-3 text-xs space-y-1 max-w-xs">
+                <p className="font-semibold text-slate-800">
+                    {item.kode} — {item.nama}
+                </p>
+                <p className="text-slate-500">
+                    Stok:{" "}
+                    <span className="font-semibold">
+                        {item.stok_sisa} {item.satuan_nama}
+                    </span>
+                </p>
+                <p className="text-slate-500">
+                    Harga Satuan:{" "}
+                    <span className="font-semibold">{formatIDR(item.harga_idr)}</span>
+                </p>
+                <p className="text-slate-800">
+                    Nilai Stok:{" "}
+                    <span className="font-bold text-indigo-600">
+                        {formatIDR(item.nilai)}
+                    </span>
+                </p>
+            </div>
+        );
+    };
 
     return (
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xl flex flex-col flex-1 min-h-[220px]">
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xl h-full">
             <h2 className="text-xl font-semibold text-slate-800 mb-4 flex items-center gap-2">
-                <Clock size={20} className="text-pink-500" />
-                Log Pergerakan Stok (Realtime)
+                <TrendingUp size={20} className="text-blue-500" />
+                Visualisasi Data Stok (Top 10 Nilai)
             </h2>
-            <ul className="space-y-4">
-                {latest10.map((m) => {
-                    const masuk = m.jenis === "MASUK";
-                    return (
-                        <li
-                            key={m.id}
-                            className="flex items-start gap-4 p-2 -mx-2 rounded-lg hover:bg-slate-50 transition-colors"
+
+            {data.length === 0 ? (
+                <div className="w-full h-[450px] bg-slate-50 rounded-xl border border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400 relative overflow-hidden">
+                    <div className="absolute inset-0 opacity-[0.05] bg-[linear-gradient(to_right,#e2e8f0_1px,transparent_1px),linear-gradient(to_bottom,#e2e8f0_1px,transparent_1px)] bg-[size:20px_20px]" />
+                    <BarChart2 size={48} className="mb-2 opacity-50 text-blue-400 z-10" />
+                    <p className="font-medium z-10 text-sm">
+                        Belum ada data stok untuk divisualisasikan.
+                    </p>
+                </div>
+            ) : (
+                <div className="w-full h-[450px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart
+                            data={data}
+                            margin={{ top: 16, right: 24, left: 8, bottom: 48 }}
                         >
-                            <div
-                                className={`w-1.5 h-6 rounded-full shrink-0 ${masuk ? "bg-emerald-500" : "bg-red-500"
-                                    } mt-1`}
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                            <XAxis
+                                dataKey="kode"
+                                angle={-35}
+                                textAnchor="end"
+                                height={60}
+                                tick={{ fontSize: 11 }}
                             />
-                            <div className="flex-1">
-                                <p className="text-sm font-semibold text-slate-700 flex justify-between items-center">
-                                    <span className="truncate">
-                                        {m.keterangan || "Pergerakan"}
+                            <YAxis
+                                tickFormatter={(v) => formatIDRCompact(v as number)}
+                                tick={{ fontSize: 11 }}
+                            />
+                            <RechartsTooltip content={<CustomTooltip />} />
+                            <Legend
+                                formatter={() => (
+                                    <span className="text-xs text-slate-600">
+                                        Nilai stok per produk (Rp)
                                     </span>
-                                    <span
-                                        className={`font-extrabold text-sm shrink-0 ml-4 ${masuk ? "text-emerald-600" : "text-red-600"
-                                            }`}
-                                    >
-                                        {masuk ? "+" : "-"}
-                                        {m.qty}
-                                    </span>
-                                </p>
-                                <p className="text-xs text-slate-500 mt-0.5 flex justify-between">
-                                    <span
-                                        className={`font-medium ${masuk ? "text-emerald-500" : "text-red-500"
-                                            }`}
-                                    >
-                                        {masuk ? "Masuk Gudang" : "Keluar Gudang"}
-                                    </span>
-                                    <span className="text-slate-400">
-                                        {new Date(m.created_at).toLocaleString("id-ID")}
-                                    </span>
-                                </p>
-                            </div>
-                        </li>
-                    );
-                })}
-                {latest10.length === 0 && (
-                    <li className="text-xs text-slate-400 text-center py-4">
-                        Belum ada pergerakan stok.
-                    </li>
-                )}
-            </ul>
+                                )}
+                            />
+                            <Bar
+                                dataKey="nilai"
+                                name="Nilai Stok (Rp)"
+                                radius={[8, 8, 0, 0]}
+                                fill="#4f46e5"
+                            />
+                        </BarChart>
+                    </ResponsiveContainer>
+                </div>
+            )}
         </div>
     );
 };
 
-// Helper pagination
+// ====== LOG PERGERAKAN STOK ======
+const MovementLogCard = ({
+    data,
+    stocks,
+}: {
+    data: Movement[];
+    stocks: StockItem[];
+}) => {
+    // pastikan terbaru di atas (kalau backend belum sort)
+    const latest10 = [...data]
+        .sort(
+            (a, b) =>
+                new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+        )
+        .slice(0, 10);
+
+    return (
+        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xl flex flex-col flex-1">
+            <h2 className="text-xl font-semibold text-slate-800 mb-4 flex items-center gap-2">
+                <Clock size={20} className="text-pink-500" />
+                Log Pergerakan Stok (Realtime)
+            </h2>
+
+            {/* Container scroll vertical khusus log */}
+            <div className="mt-1 space-y-3 max-h-[420px] overflow-y-auto pr-1">
+                {latest10.map((m) => {
+                    const jenisUpper = m.jenis?.toUpperCase?.() ?? m.jenis;
+                    const masuk = jenisUpper === "MASUK";
+
+                    // cek apakah movement ini retur barang (jenis_pemasukan = RETUR_BARANG)
+                    const isReturBarang =
+                        masuk &&
+                        m.jenis_pemasukan &&
+                        m.jenis_pemasukan.toUpperCase() === "RETUR_BARANG";
+
+                    const accentClass = masuk
+                        ? isReturBarang
+                            ? "bg-orange-500"
+                            : "bg-emerald-500"
+                        : "bg-red-500";
+
+                    const labelText = masuk
+                        ? isReturBarang
+                            ? "Retur Barang ke Gudang"
+                            : "Masuk Gudang"
+                        : "Keluar Gudang";
+
+                    const labelColorClass = masuk
+                        ? isReturBarang
+                            ? "text-orange-500"
+                            : "text-emerald-500"
+                        : "text-red-500";
+
+                    const qtyColorClass = masuk
+                        ? isReturBarang
+                            ? "text-orange-600"
+                            : "text-emerald-600"
+                        : "text-red-600";
+
+                    // Cari info stok dari daftar stocks berdasarkan stok_id
+                    const stokInfo = stocks.find((s) => s.id === m.stok_id);
+                    const hargaSatuan = stokInfo?.harga_idr ?? 0;
+                    const totalNilai = m.qty * hargaSatuan;
+                    const satuanNama = stokInfo?.satuan_nama ?? "";
+
+                    const namaProduk = stokInfo
+                        ? `${stokInfo.kode} — ${stokInfo.nama}`
+                        : m.keterangan || "Pergerakan Stok";
+
+                    return (
+                        <div
+                            key={m.id}
+                            className="rounded-xl border border-slate-100 bg-slate-50/70 hover:bg-slate-50 transition-colors"
+                        >
+                            {/* Scroll horizontal di level CARD, bukan di teks kode saja */}
+                            <div className="px-3 py-2 overflow-x-auto">
+                                {/* Konten dibuat min-w-max + whitespace-nowrap supaya bisa di-scroll full */}
+                                <div className="flex items-stretch gap-3 min-w-max whitespace-nowrap">
+                                    {/* Accent bar */}
+                                    <div className={`w-1.5 rounded-full shrink-0 ${accentClass}`} />
+
+                                    {/* Content utama */}
+                                    <div className="flex-1 min-w-0">
+                                        {/* Baris 1: Nama produk & qty */}
+                                        <div className="flex items-start justify-between gap-3">
+                                            {/* Kode + nama produk FULL */}
+                                            <div className="flex-1 min-w-0">
+                                                <span className="text-sm font-semibold text-slate-800">
+                                                    {namaProduk}
+                                                </span>
+                                            </div>
+
+                                            <span
+                                                className={`text-xs sm:text-sm font-extrabold shrink-0 ${qtyColorClass}`}
+                                            >
+                                                {masuk ? "+" : "-"}
+                                                {m.qty}{" "}
+                                                {satuanNama && (
+                                                    <span className="font-normal text-slate-600 ml-0.5">
+                                                        {satuanNama}
+                                                    </span>
+                                                )}
+                                            </span>
+                                        </div>
+
+                                        {/* Baris 2: Info arah + harga & nilai */}
+                                        <div className="mt-0.5 flex flex-col gap-0.5 text-xs">
+                                            <span className={`font-medium ${labelColorClass}`}>
+                                                {labelText}
+                                                {m.sumber_tujuan ? ` • ${m.sumber_tujuan}` : ""}
+                                            </span>
+
+                                            {stokInfo ? (
+                                                <span className="text-[11px] text-slate-500">
+                                                    Harga:{" "}
+                                                    <span className="font-semibold">
+                                                        {formatIDR(hargaSatuan)}
+                                                    </span>{" "}
+                                                    {satuanNama && `/ ${satuanNama}`} • Nilai:{" "}
+                                                    <span className="font-semibold">
+                                                        {formatIDR(totalNilai)}
+                                                    </span>
+                                                </span>
+                                            ) : (
+                                                <span className="text-[11px] text-slate-400">
+                                                    Detail produk tidak ditemukan (stok_id: {m.stok_id})
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Waktu di kanan */}
+                                    <div className="shrink-0 flex items-start">
+                                        <span className="text-[11px] text-slate-400 text-right">
+                                            {formatDateTimeWIB(m.created_at)}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
+
+                {latest10.length === 0 && (
+                    <div className="text-xs text-slate-400 text-center py-4">
+                        Belum ada pergerakan stok.
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
 function buildPageNumbers(current: number, total: number): (number | string)[] {
     const pages: (number | string)[] = [];
     if (total <= 5) {
@@ -159,21 +378,14 @@ function buildPageNumbers(current: number, total: number): (number | string)[] {
     return pages;
 }
 
-// Helper format IDR
-const formatIDR = (value: number) =>
-    new Intl.NumberFormat("id-ID", {
-        style: "currency",
-        currency: "IDR",
-        minimumFractionDigits: 0,
-    }).format(value);
-
 export default function InventoryDashboardClient({
     initialStocks,
     initialMovements,
 }: Props) {
     const [open, setOpen] = useState(true);
     const [stocks, setStocks] = useState<StockItem[]>(initialStocks);
-    const [movements, setMovements] = useState<Movement[]>(initialMovements);
+    const [movements, setMovements] =
+        useState<Movement[]>(initialMovements);
     const [search, setSearch] = useState("");
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 10;
@@ -182,12 +394,16 @@ export default function InventoryDashboardClient({
         process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8080";
 
     const refetchStocks = async () => {
-        const res = await fetch(`${backendUrl}/api/stok`);
+        const res = await fetch(`${backendUrl}/api/stok`, {
+            cache: "no-store",
+        });
         setStocks(await res.json());
     };
 
     const refetchMovements = async () => {
-        const res = await fetch(`${backendUrl}/api/stok/movements/recent`);
+        const res = await fetch(`${backendUrl}/api/stok/movements/recent`, {
+            cache: "no-store",
+        });
         setMovements(await res.json());
     };
 
@@ -202,13 +418,13 @@ export default function InventoryDashboardClient({
         const wsUrl = backendUrl.replace(/^https?/, proto) + "/ws";
         const ws = new WebSocket(wsUrl);
 
-        ws.onopen = () => console.log("✅ WS connected");
+        ws.onopen = () => console.log("✅ WS connected:", wsUrl);
         ws.onmessage = (e) => {
             try {
                 const msg = JSON.parse(e.data);
                 if (!msg?.event) return;
 
-                console.log("📦 WS Event:", msg.event);
+                console.log("📦 WS Event:", msg.event, msg);
 
                 switch (msg.event) {
                     case "movement_created":
@@ -220,12 +436,20 @@ export default function InventoryDashboardClient({
                     case "stok_deleted":
                         refetchStocks();
                         break;
+                    case "batch_stock_in":
+                        // event khusus dari POST /api/stock-movements/batch-in
+                        refetchStocks();
+                        refetchMovements();
+                        break;
+                    default:
+                        break;
                 }
             } catch {
-                // ignore plain text
+                // kalau plain text, skip
             }
         };
         ws.onclose = () => console.log("❌ WS disconnected");
+
         return () => ws.close();
     }, [backendUrl]);
 
@@ -238,7 +462,7 @@ export default function InventoryDashboardClient({
                 s.kode.toLowerCase().includes(q) ||
                 s.nama.toLowerCase().includes(q) ||
                 s.brand.toLowerCase().includes(q) ||
-                (s.lokasi || "").toLowerCase().includes(q)
+                (s.lokasi || "").toLowerCase().includes(q),
         );
     }, [stocks, search]);
 
@@ -298,13 +522,10 @@ export default function InventoryDashboardClient({
                         {/* Charts + Movement Log */}
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8">
                             <div className="lg:col-span-2">
-                                <ChartPlaceholder
-                                    title="Analisis Pergerakan Stok Bulanan"
-                                    icon={TrendingUp}
-                                />
+                                <StockValueChart stocks={stocks} />
                             </div>
                             <div className="lg:col-span-1">
-                                <MovementLogCard data={movements} />
+                                <MovementLogCard data={movements} stocks={stocks} />
                             </div>
                         </div>
 
@@ -312,7 +533,8 @@ export default function InventoryDashboardClient({
                         <div className="mt-8 bg-white border border-slate-200 rounded-2xl p-8 shadow-2xl">
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 pb-2 border-b border-blue-500/20 gap-4">
                                 <h2 className="text-2xl font-extrabold text-slate-700 flex items-center gap-3">
-                                    <Package size={24} className="text-blue-500" /> Total Stok Gudang
+                                    <Package size={24} className="text-blue-500" /> Total Stok
+                                    Gudang
                                 </h2>
                                 <div className="flex items-center bg-slate-50 border border-slate-300 px-4 py-2 rounded-xl">
                                     <Search size={18} className="text-slate-400" />
@@ -337,8 +559,9 @@ export default function InventoryDashboardClient({
                                                 "Brand",
                                                 "Lokasi",
                                                 "Stok Sisa",
-                                                "Harga Satuan",
                                                 "Satuan",
+                                                "Harga Satuan",
+                                                "Harga Total",
                                             ].map((h) => (
                                                 <th
                                                     key={h}
@@ -350,38 +573,45 @@ export default function InventoryDashboardClient({
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
-                                        {pageItems.map((item, i) => (
-                                            <tr key={item.id} className="hover:bg-slate-50">
-                                                <td className="px-6 py-4 text-sm text-slate-500 font-semibold">
-                                                    {startIndex + i + 1}.
-                                                </td>
-                                                <td className="px-6 py-4 text-sm font-medium text-slate-800">
-                                                    {item.kode}
-                                                </td>
-                                                <td className="px-6 py-4 text-sm text-slate-700 font-semibold">
-                                                    {item.nama}
-                                                </td>
-                                                <td className="px-6 py-4 text-sm text-slate-600">
-                                                    {item.brand}
-                                                </td>
-                                                <td className="px-6 py-4 text-sm text-slate-500">
-                                                    {item.lokasi}
-                                                </td>
-                                                <td className="px-6 py-4 text-sm font-bold text-emerald-700">
-                                                    {item.stok_sisa}
-                                                </td>
-                                                <td className="px-6 py-4 text-sm font-semibold text-slate-800">
-                                                    {formatIDR(item.harga_idr)}
-                                                </td>
-                                                <td className="px-6 py-4 text-sm text-slate-700">
-                                                    {item.satuan_nama}
-                                                </td>
-                                            </tr>
-                                        ))}
+                                        {pageItems.map((item, i) => {
+                                            const hargaTotal = item.stok_sisa * item.harga_idr;
+
+                                            return (
+                                                <tr key={item.id} className="hover:bg-slate-50">
+                                                    <td className="px-6 py-4 text-sm text-slate-500 font-semibold">
+                                                        {startIndex + i + 1}.
+                                                    </td>
+                                                    <td className="px-6 py-4 text-sm font-medium text-slate-800">
+                                                        {item.kode}
+                                                    </td>
+                                                    <td className="px-6 py-4 text-sm text-slate-700 font-semibold">
+                                                        {item.nama}
+                                                    </td>
+                                                    <td className="px-6 py-4 text-sm text-slate-600">
+                                                        {item.brand}
+                                                    </td>
+                                                    <td className="px-6 py-4 text-sm text-slate-500">
+                                                        {item.lokasi}
+                                                    </td>
+                                                    <td className="px-6 py-4 text-sm font-bold text-emerald-700">
+                                                        {item.stok_sisa}
+                                                    </td>
+                                                    <td className="px-6 py-4 text-sm text-slate-700">
+                                                        {item.satuan_nama}
+                                                    </td>
+                                                    <td className="px-6 py-4 text-sm font-semibold text-slate-800">
+                                                        {formatIDR(item.harga_idr)}
+                                                    </td>
+                                                    <td className="px-6 py-4 text-sm font-extrabold text-slate-900">
+                                                        {formatIDR(hargaTotal)}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
                                         {pageItems.length === 0 && (
                                             <tr>
                                                 <td
-                                                    colSpan={8}
+                                                    colSpan={9}
                                                     className="px-6 py-6 text-center text-sm text-slate-400"
                                                 >
                                                     Tidak ada data stok.
@@ -402,7 +632,8 @@ export default function InventoryDashboardClient({
                                             {startIndex + pageItems.length}
                                         </span>{" "}
                                         dari{" "}
-                                        <span className="font-semibold">{filtered.length}</span> data
+                                        <span className="font-semibold">{filtered.length}</span>{" "}
+                                        data
                                     </p>
 
                                     <div className="flex items-center gap-1">
@@ -433,7 +664,7 @@ export default function InventoryDashboardClient({
                                                 >
                                                     {p}
                                                 </button>
-                                            )
+                                            ),
                                         )}
 
                                         <button

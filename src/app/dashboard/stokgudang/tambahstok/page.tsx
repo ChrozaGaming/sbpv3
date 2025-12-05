@@ -1,3 +1,4 @@
+// /src/app/dashboard/stokgudang/tambahstok/page.tsx
 "use client";
 
 import { useState, useCallback, useRef } from "react";
@@ -12,10 +13,10 @@ import {
     CheckCircle,
 } from "lucide-react";
 
-// Gunakan env NEXT_PUBLIC_API_URL (tanpa /api di belakang)
-// NEXT_PUBLIC_API_URL=http://localhost:8080
+// Gunakan env NEXT_PUBLIC_API_BASE (tanpa /api di belakang)
+// NEXT_PUBLIC_API_BASE=http://localhost:8080
 const API_BASE_URL =
-    (process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") as string | undefined) ??
+    (process.env.NEXT_PUBLIC_API_BASE?.replace(/\/$/, "") as string | undefined) ??
     "http://localhost:8080";
 
 type JenisPemasukan = "pembelian_po" | "retur_barang";
@@ -36,6 +37,16 @@ const JENIS_PEMASUKAN_OPTIONS: {
             description: "Stok masuk karena retur dari proyek / customer.",
         },
     ];
+
+// 🔹 Pilihan lokasi gudang
+const LOKASI_OPTIONS: { value: string; label: string }[] = [
+    { value: "", label: "Pilih Lokasi Gudang" },
+    { value: "Gudang A (Utama)", label: "Gudang A (Utama)" },
+    { value: "Gudang B", label: "Gudang B" },
+    { value: "Gudang C", label: "Gudang C" },
+    { value: "Gudang D", label: "Gudang D" },
+    { value: "Gudang E", label: "Gudang E" },
+];
 
 type Product = {
     id: number;
@@ -80,7 +91,7 @@ const formatRupiah = (amount: number) => {
 };
 
 export default function TambahStokPage() {
-    const [lokasi, setLokasi] = useState("");
+    const [lokasi, setLokasi] = useState<string>(""); // sekarang pakai dropdown
     const [jenisPemasukan, setJenisPemasukan] =
         useState<JenisPemasukan>("pembelian_po");
     const [tanggal, setTanggal] = useState(
@@ -288,12 +299,12 @@ export default function TambahStokPage() {
             .map((line) => ({
                 product_id: line.product!.id,
                 product_kode: line.product!.kode,
-                qty: Number(line.qty),
-                satuan: line.product!.satuan,
+                qty: Number(line.qty), // backend: i32
+                satuan: line.product!.satuan, // untuk cross-check di Rust
             }));
 
         if (!lokasi.trim()) {
-            setFormError("Lokasi penyimpanan wajib diisi.");
+            setFormError("Lokasi penyimpanan wajib dipilih.");
             window.scrollTo({ top: 0, behavior: "smooth" });
             return;
         }
@@ -309,9 +320,9 @@ export default function TambahStokPage() {
         }
 
         const payload = {
-            tanggal,
+            tanggal, // "YYYY-MM-DD" → NaiveDate
             lokasi: lokasi.trim(),
-            jenis_pemasukan: jenisPemasukan,
+            jenis_pemasukan: jenisPemasukan, // "pembelian_po" | "retur_barang"
             items: validItems,
         };
 
@@ -337,7 +348,7 @@ export default function TambahStokPage() {
                 throw new Error(message);
             }
 
-            setFormSuccess("Stok masuk berhasil disimpan ke stockmovement.");
+            setFormSuccess("Stok masuk berhasil disimpan ke stockmovement & stok.");
             setLines([createEmptyLine()]);
             setLokasi("");
             setJenisPemasukan("pembelian_po");
@@ -447,17 +458,25 @@ export default function TambahStokPage() {
                                     <MapPin className="w-4 h-4 text-indigo-500" />
                                     Lokasi Penyimpanan <span className="text-red-500">*</span>
                                 </label>
-                                <input
+                                <select
                                     id="lokasi"
-                                    type="text"
                                     value={lokasi}
                                     onChange={(e) => setLokasi(e.target.value)}
                                     className="border border-gray-300 rounded-lg px-4 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-150 shadow-sm"
-                                    placeholder="Contoh: Gudang Utama"
                                     required
-                                />
+                                >
+                                    {LOKASI_OPTIONS.map((opt) => (
+                                        <option
+                                            key={opt.value || "placeholder"}
+                                            value={opt.value}
+                                            disabled={opt.value === ""}
+                                        >
+                                            {opt.label}
+                                        </option>
+                                    ))}
+                                </select>
                                 <p className="text-xs text-gray-500 mt-1">
-                                    Lokasi fisik stok yang menerima barang.
+                                    Pilih gudang tempat stok fisik disimpan.
                                 </p>
                             </div>
 
