@@ -10,6 +10,7 @@ import {
     Calendar,
     Search,
     ChevronDown,
+    ArrowUpDown,
 } from "lucide-react";
 
 import {
@@ -37,6 +38,9 @@ interface StockItem {
     stok_sisa: number;
     satuan_nama: string;
     lokasi: string;
+    // optional field dari backend (sbpv3.stok)
+    tanggal_masuk?: string | null;
+    created_at?: string | null;
 }
 
 interface Movement {
@@ -126,7 +130,9 @@ const StockValueChart = ({ stocks }: { stocks: StockItem[] }) => {
                 </p>
                 <p className="text-slate-500">
                     Harga Satuan:{" "}
-                    <span className="font-semibold">{formatIDR(item.harga_idr)}</span>
+                    <span className="font-semibold">
+                        {formatIDR(item.harga_idr)}
+                    </span>
                 </p>
                 <p className="text-slate-800">
                     Nilai Stok:{" "}
@@ -148,7 +154,10 @@ const StockValueChart = ({ stocks }: { stocks: StockItem[] }) => {
             {data.length === 0 ? (
                 <div className="w-full h-[450px] bg-slate-50 rounded-xl border border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400 relative overflow-hidden">
                     <div className="absolute inset-0 opacity-[0.05] bg-[linear-gradient(to_right,#e2e8f0_1px,transparent_1px),linear-gradient(to_bottom,#e2e8f0_1px,transparent_1px)] bg-[size:20px_20px]" />
-                    <BarChart2 size={48} className="mb-2 opacity-50 text-blue-400 z-10" />
+                    <BarChart2
+                        size={48}
+                        className="mb-2 opacity-50 text-blue-400 z-10"
+                    />
                     <p className="font-medium z-10 text-sm">
                         Belum ada data stok untuk divisualisasikan.
                     </p>
@@ -206,7 +215,8 @@ const MovementLogCard = ({
     const latest10 = [...data]
         .sort(
             (a, b) =>
-                new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+                new Date(b.created_at).getTime() -
+                new Date(a.created_at).getTime(),
         )
         .slice(0, 10);
 
@@ -273,7 +283,9 @@ const MovementLogCard = ({
                                 {/* Konten dibuat min-w-max + whitespace-nowrap supaya bisa di-scroll full */}
                                 <div className="flex items-stretch gap-3 min-w-max whitespace-nowrap">
                                     {/* Accent bar */}
-                                    <div className={`w-1.5 rounded-full shrink-0 ${accentClass}`} />
+                                    <div
+                                        className={`w-1.5 rounded-full shrink-0 ${accentClass}`}
+                                    />
 
                                     {/* Content utama */}
                                     <div className="flex-1 min-w-0">
@@ -303,7 +315,9 @@ const MovementLogCard = ({
                                         <div className="mt-0.5 flex flex-col gap-0.5 text-xs">
                                             <span className={`font-medium ${labelColorClass}`}>
                                                 {labelText}
-                                                {m.sumber_tujuan ? ` • ${m.sumber_tujuan}` : ""}
+                                                {m.sumber_tujuan
+                                                    ? ` • ${m.sumber_tujuan}`
+                                                    : ""}
                                             </span>
 
                                             {stokInfo ? (
@@ -312,14 +326,15 @@ const MovementLogCard = ({
                                                     <span className="font-semibold">
                                                         {formatIDR(hargaSatuan)}
                                                     </span>{" "}
-                                                    {satuanNama && `/ ${satuanNama}`} • Nilai:{" "}
+                                                    {satuanNama && `/ ${satuanNama}`} • Total:{" "}
                                                     <span className="font-semibold">
                                                         {formatIDR(totalNilai)}
                                                     </span>
                                                 </span>
                                             ) : (
                                                 <span className="text-[11px] text-slate-400">
-                                                    Detail produk tidak ditemukan (stok_id: {m.stok_id})
+                                                    Detail produk tidak ditemukan (stok_id:{" "}
+                                                    {m.stok_id})
                                                 </span>
                                             )}
                                         </div>
@@ -347,36 +362,20 @@ const MovementLogCard = ({
     );
 };
 
-function buildPageNumbers(current: number, total: number): (number | string)[] {
-    const pages: (number | string)[] = [];
-    if (total <= 5) {
-        for (let i = 1; i <= total; i++) pages.push(i);
-        return pages;
-    }
+// ====== SORTING ======
+type SortKey =
+    | "kode"
+    | "nama"
+    | "brand"
+    | "lokasi"
+    | "stok_sisa"
+    | "satuan_nama"
+    | "harga_idr"
+    | "harga_total"
+    | "tanggal_masuk"
+    | "created_at";
 
-    pages.push(1);
-
-    if (current > 3) {
-        pages.push("...");
-    }
-
-    const start = Math.max(2, current - 1);
-    const end = Math.min(total - 1, current + 1);
-
-    for (let i = start; i <= end; i++) {
-        if (!pages.includes(i)) pages.push(i);
-    }
-
-    if (current < total - 2) {
-        pages.push("...");
-    }
-
-    if (!pages.includes(total)) {
-        pages.push(total);
-    }
-
-    return pages;
-}
+type SortDirection = "asc" | "desc";
 
 export default function InventoryDashboardClient({
     initialStocks,
@@ -387,8 +386,18 @@ export default function InventoryDashboardClient({
     const [movements, setMovements] =
         useState<Movement[]>(initialMovements);
     const [search, setSearch] = useState("");
+    const [showReturOnly, setShowReturOnly] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 10;
+
+    // default: produk terbaru di atas → sort by created_at desc
+    const [sortConfig, setSortConfig] = useState<{
+        key: SortKey;
+        direction: SortDirection;
+    }>({
+        key: "created_at",
+        direction: "desc",
+    });
 
     const backendUrl =
         process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8080";
@@ -397,20 +406,25 @@ export default function InventoryDashboardClient({
         const res = await fetch(`${backendUrl}/api/stok`, {
             cache: "no-store",
         });
-        setStocks(await res.json());
+        const data: StockItem[] = await res.json();
+        setStocks(data);
     };
 
     const refetchMovements = async () => {
-        const res = await fetch(`${backendUrl}/api/stok/movements/recent`, {
-            cache: "no-store",
-        });
-        setMovements(await res.json());
+        const res = await fetch(
+            `${backendUrl}/api/stok/movements/recent`,
+            {
+                cache: "no-store",
+            },
+        );
+        const data: Movement[] = await res.json();
+        setMovements(data);
     };
 
     // Reset halaman kalau keyword berubah
     useEffect(() => {
         setCurrentPage(1);
-    }, [search]);
+    }, [search, showReturOnly]);
 
     // WebSocket realtime listener
     useEffect(() => {
@@ -453,25 +467,188 @@ export default function InventoryDashboardClient({
         return () => ws.close();
     }, [backendUrl]);
 
-    // Filter
-    const filtered = useMemo(() => {
-        if (!search) return stocks;
-        const q = search.toLowerCase();
-        return stocks.filter(
-            (s) =>
-                s.kode.toLowerCase().includes(q) ||
-                s.nama.toLowerCase().includes(q) ||
-                s.brand.toLowerCase().includes(q) ||
-                (s.lokasi || "").toLowerCase().includes(q),
+    const handleSort = (key: SortKey) => {
+        setSortConfig((prev) => {
+            if (prev.key === key) {
+                // toggle asc/desc
+                return {
+                    key,
+                    direction: prev.direction === "asc" ? "desc" : "asc",
+                };
+            }
+
+            // default arah untuk kolom baru
+            let defaultDirection: SortDirection = "asc";
+            if (
+                key === "stok_sisa" ||
+                key === "harga_idr" ||
+                key === "harga_total" ||
+                key === "created_at" ||
+                key === "tanggal_masuk"
+            ) {
+                defaultDirection = "desc";
+            }
+
+            return { key, direction: defaultDirection };
+        });
+    };
+
+    const renderSortIcon = (key: SortKey) => {
+        if (sortConfig.key !== key) {
+            return (
+                <ArrowUpDown
+                    size={14}
+                    className="ml-1 text-slate-400 inline-block"
+                />
+            );
+        }
+
+        return (
+            <span className="ml-1 text-[10px] text-blue-600 inline-block">
+                {sortConfig.direction === "asc" ? "▲" : "▼"}
+            </span>
         );
-    }, [stocks, search]);
+    };
+
+    const isReturStockFn = (item: StockItem) =>
+        item.nama?.startsWith("[SISA RETUR]") ?? false;
+
+    // Filter + Sort
+    const processed = useMemo(() => {
+        let base = [...stocks];
+
+        // search global
+        if (search.trim()) {
+            const q = search.toLowerCase();
+            base = base.filter(
+                (s) =>
+                    s.kode.toLowerCase().includes(q) ||
+                    s.nama.toLowerCase().includes(q) ||
+                    s.brand.toLowerCase().includes(q) ||
+                    (s.lokasi || "").toLowerCase().includes(q),
+            );
+        }
+
+        // filter "Sisa Retur" saja
+        if (showReturOnly) {
+            base = base.filter((s) => isReturStockFn(s));
+        }
+
+        // sort
+        const { key, direction } = sortConfig;
+        const factor = direction === "asc" ? 1 : -1;
+
+        base.sort((a, b) => {
+            const numCompare = (av: number, bv: number) =>
+                (av - bv) * factor;
+            const strCompare = (av: string, bv: string) =>
+                av.localeCompare(bv) * factor;
+
+            switch (key) {
+                case "kode":
+                    return strCompare(a.kode || "", b.kode || "");
+                case "nama":
+                    return strCompare(a.nama || "", b.nama || "");
+                case "brand":
+                    return strCompare(a.brand || "", b.brand || "");
+                case "lokasi":
+                    return strCompare(a.lokasi || "", b.lokasi || "");
+                case "stok_sisa":
+                    return numCompare(a.stok_sisa ?? 0, b.stok_sisa ?? 0);
+                case "satuan_nama":
+                    return strCompare(
+                        a.satuan_nama || "",
+                        b.satuan_nama || "",
+                    );
+                case "harga_idr":
+                    return numCompare(a.harga_idr ?? 0, b.harga_idr ?? 0);
+                case "harga_total": {
+                    const at =
+                        (a.stok_sisa ?? 0) * (a.harga_idr ?? 0);
+                    const bt =
+                        (b.stok_sisa ?? 0) * (b.harga_idr ?? 0);
+                    return numCompare(at, bt);
+                }
+                case "tanggal_masuk": {
+                    const ad = a.tanggal_masuk
+                        ? new Date(a.tanggal_masuk).getTime()
+                        : 0;
+                    const bd = b.tanggal_masuk
+                        ? new Date(b.tanggal_masuk).getTime()
+                        : 0;
+                    return numCompare(ad, bd);
+                }
+                case "created_at":
+                default: {
+                    const ad = a.created_at
+                        ? new Date(a.created_at).getTime()
+                        : 0;
+                    const bd = b.created_at
+                        ? new Date(b.created_at).getTime()
+                        : 0;
+
+                    // fallback ke id kalau created_at kosong
+                    if (ad === 0 && bd === 0) {
+                        return numCompare(a.id ?? 0, b.id ?? 0);
+                    }
+                    return numCompare(ad, bd);
+                }
+            }
+        });
+
+        return base;
+    }, [stocks, search, showReturOnly, sortConfig]);
 
     // Pagination
-    const pageCount = Math.max(1, Math.ceil(filtered.length / itemsPerPage));
+    const pageCount = Math.max(
+        1,
+        Math.ceil(processed.length / itemsPerPage),
+    );
     const safeCurrentPage = Math.min(currentPage, pageCount);
     const startIndex = (safeCurrentPage - 1) * itemsPerPage;
-    const pageItems = filtered.slice(startIndex, startIndex + itemsPerPage);
-    const pageNumbers = buildPageNumbers(safeCurrentPage, pageCount);
+    const pageItems = processed.slice(
+        startIndex,
+        startIndex + itemsPerPage,
+    );
+
+    function buildPageNumbers(
+        current: number,
+        total: number,
+    ): (number | string)[] {
+        const pages: (number | string)[] = [];
+        if (total <= 5) {
+            for (let i = 1; i <= total; i++) pages.push(i);
+            return pages;
+        }
+
+        pages.push(1);
+
+        if (current > 3) {
+            pages.push("...");
+        }
+
+        const start = Math.max(2, current - 1);
+        const end = Math.min(total - 1, current + 1);
+
+        for (let i = start; i <= end; i++) {
+            if (!pages.includes(i)) pages.push(i);
+        }
+
+        if (current < total - 2) {
+            pages.push("...");
+        }
+
+        if (!pages.includes(total)) {
+            pages.push(total);
+        }
+
+        return pages;
+    }
+
+    const pageNumbers = buildPageNumbers(
+        safeCurrentPage,
+        pageCount,
+    );
 
     const handleGoToPage = (page: number) => {
         if (page < 1 || page > pageCount) return;
@@ -525,7 +702,10 @@ export default function InventoryDashboardClient({
                                 <StockValueChart stocks={stocks} />
                             </div>
                             <div className="lg:col-span-1">
-                                <MovementLogCard data={movements} stocks={stocks} />
+                                <MovementLogCard
+                                    data={movements}
+                                    stocks={stocks}
+                                />
                             </div>
                         </div>
 
@@ -536,15 +716,43 @@ export default function InventoryDashboardClient({
                                     <Package size={24} className="text-blue-500" /> Total Stok
                                     Gudang
                                 </h2>
-                                <div className="flex items-center bg-slate-50 border border-slate-300 px-4 py-2 rounded-xl">
-                                    <Search size={18} className="text-slate-400" />
-                                    <input
-                                        type="text"
-                                        placeholder="Cari SKU / Nama / Brand..."
-                                        className="bg-transparent border-none outline-none text-sm ml-3 w-full text-slate-700"
-                                        value={search}
-                                        onChange={(e) => setSearch(e.target.value)}
-                                    />
+
+                                <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:gap-4">
+                                    <div className="flex items-center bg-slate-50 border border-slate-300 px-4 py-2 rounded-xl">
+                                        <Search
+                                            size={18}
+                                            className="text-slate-400"
+                                        />
+                                        <input
+                                            type="text"
+                                            placeholder="Cari SKU / Nama / Brand..."
+                                            className="bg-transparent border-none outline-none text-sm ml-3 w-full text-slate-700"
+                                            value={search}
+                                            onChange={(e) =>
+                                                setSearch(e.target.value)
+                                            }
+                                        />
+                                    </div>
+
+                                    <label className="inline-flex items-center gap-2 text-xs sm:text-sm text-slate-600 select-none">
+                                        <input
+                                            type="checkbox"
+                                            className="h-4 w-4 rounded border-slate-300 text-orange-500 focus:ring-orange-400"
+                                            checked={showReturOnly}
+                                            onChange={(e) =>
+                                                setShowReturOnly(
+                                                    e.target.checked,
+                                                )
+                                            }
+                                        />
+                                        <span>
+                                            Tampilkan{" "}
+                                            <span className="font-semibold">
+                                                Sisa Retur Barang
+                                            </span>{" "}
+                                            Saja
+                                        </span>
+                                    </label>
                                 </div>
                             </div>
 
@@ -552,32 +760,152 @@ export default function InventoryDashboardClient({
                                 <table className="min-w-full divide-y divide-slate-200">
                                     <thead className="bg-blue-50">
                                         <tr>
-                                            {[
-                                                "No.",
-                                                "Kode",
-                                                "Nama Produk",
-                                                "Brand",
-                                                "Lokasi",
-                                                "Stok Sisa",
-                                                "Satuan",
-                                                "Harga Satuan",
-                                                "Harga Total",
-                                            ].map((h) => (
-                                                <th
-                                                    key={h}
-                                                    className="px-6 py-4 text-xs font-bold text-blue-800 uppercase tracking-wider text-left"
+                                            {/* No. (tidak sortable) */}
+                                            <th className="px-6 py-4 text-xs font-bold text-blue-800 uppercase tracking-wider text-left">
+                                                No.
+                                            </th>
+
+                                            {/* Kode */}
+                                            <th className="px-6 py-4 text-xs font-bold text-blue-800 uppercase tracking-wider text-left">
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        handleSort("kode")
+                                                    }
+                                                    className="inline-flex items-center"
                                                 >
-                                                    {h}
-                                                </th>
-                                            ))}
+                                                    <span>Kode</span>
+                                                    {renderSortIcon("kode")}
+                                                </button>
+                                            </th>
+
+                                            {/* Nama Produk */}
+                                            <th className="px-6 py-4 text-xs font-bold text-blue-800 uppercase tracking-wider text-left">
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        handleSort("nama")
+                                                    }
+                                                    className="inline-flex items-center"
+                                                >
+                                                    <span>Nama Produk</span>
+                                                    {renderSortIcon("nama")}
+                                                </button>
+                                            </th>
+
+                                            {/* Brand */}
+                                            <th className="px-6 py-4 text-xs font-bold text-blue-800 uppercase tracking-wider text-left">
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        handleSort("brand")
+                                                    }
+                                                    className="inline-flex items-center"
+                                                >
+                                                    <span>Brand</span>
+                                                    {renderSortIcon("brand")}
+                                                </button>
+                                            </th>
+
+                                            {/* Lokasi */}
+                                            <th className="px-6 py-4 text-xs font-bold text-blue-800 uppercase tracking-wider text-left">
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        handleSort("lokasi")
+                                                    }
+                                                    className="inline-flex items-center"
+                                                >
+                                                    <span>Lokasi</span>
+                                                    {renderSortIcon("lokasi")}
+                                                </button>
+                                            </th>
+
+                                            {/* Stok Sisa */}
+                                            <th className="px-6 py-4 text-xs font-bold text-blue-800 uppercase tracking-wider text-left">
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        handleSort("stok_sisa")
+                                                    }
+                                                    className="inline-flex items-center"
+                                                >
+                                                    <span>Stok Sisa</span>
+                                                    {renderSortIcon(
+                                                        "stok_sisa",
+                                                    )}
+                                                </button>
+                                            </th>
+
+                                            {/* Satuan */}
+                                            <th className="px-6 py-4 text-xs font-bold text-blue-800 uppercase tracking-wider text-left">
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        handleSort(
+                                                            "satuan_nama",
+                                                        )
+                                                    }
+                                                    className="inline-flex items-center"
+                                                >
+                                                    <span>Satuan</span>
+                                                    {renderSortIcon(
+                                                        "satuan_nama",
+                                                    )}
+                                                </button>
+                                            </th>
+
+                                            {/* Harga Satuan */}
+                                            <th className="px-6 py-4 text-xs font-bold text-blue-800 uppercase tracking-wider text-left">
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        handleSort("harga_idr")
+                                                    }
+                                                    className="inline-flex items-center"
+                                                >
+                                                    <span>Harga Satuan</span>
+                                                    {renderSortIcon(
+                                                        "harga_idr",
+                                                    )}
+                                                </button>
+                                            </th>
+
+                                            {/* Harga Total */}
+                                            <th className="px-6 py-4 text-xs font-bold text-blue-800 uppercase tracking-wider text-left">
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        handleSort(
+                                                            "harga_total",
+                                                        )
+                                                    }
+                                                    className="inline-flex items-center"
+                                                >
+                                                    <span>Harga Total</span>
+                                                    {renderSortIcon(
+                                                        "harga_total",
+                                                    )}
+                                                </button>
+                                            </th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
                                         {pageItems.map((item, i) => {
-                                            const hargaTotal = item.stok_sisa * item.harga_idr;
+                                            const hargaTotal =
+                                                item.stok_sisa * item.harga_idr;
+                                            const isReturStock =
+                                                isReturStockFn(item);
+
+                                            const rowClass = isReturStock
+                                                ? "bg-orange-50/60 hover:bg-orange-50 border-l-4 border-orange-400"
+                                                : "hover:bg-slate-50";
 
                                             return (
-                                                <tr key={item.id} className="hover:bg-slate-50">
+                                                <tr
+                                                    key={item.id}
+                                                    className={rowClass}
+                                                >
                                                     <td className="px-6 py-4 text-sm text-slate-500 font-semibold">
                                                         {startIndex + i + 1}.
                                                     </td>
@@ -585,7 +913,16 @@ export default function InventoryDashboardClient({
                                                         {item.kode}
                                                     </td>
                                                     <td className="px-6 py-4 text-sm text-slate-700 font-semibold">
-                                                        {item.nama}
+                                                        <div className="flex items-center gap-2">
+                                                            {isReturStock && (
+                                                                <span className="inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-bold text-orange-800">
+                                                                    SISA RETUR
+                                                                </span>
+                                                            )}
+                                                            <span>
+                                                                {item.nama}
+                                                            </span>
+                                                        </div>
                                                     </td>
                                                     <td className="px-6 py-4 text-sm text-slate-600">
                                                         {item.brand}
@@ -600,7 +937,9 @@ export default function InventoryDashboardClient({
                                                         {item.satuan_nama}
                                                     </td>
                                                     <td className="px-6 py-4 text-sm font-semibold text-slate-800">
-                                                        {formatIDR(item.harga_idr)}
+                                                        {formatIDR(
+                                                            item.harga_idr,
+                                                        )}
                                                     </td>
                                                     <td className="px-6 py-4 text-sm font-extrabold text-slate-900">
                                                         {formatIDR(hargaTotal)}
@@ -623,22 +962,31 @@ export default function InventoryDashboardClient({
                             </div>
 
                             {/* Pagination */}
-                            {filtered.length > 0 && (
+                            {processed.length > 0 && (
                                 <div className="mt-4 px-2 flex flex-col md:flex-row items-center justify-between gap-4">
                                     <p className="text-sm text-slate-500">
                                         Menampilkan{" "}
-                                        <span className="font-semibold">{startIndex + 1}</span> –{" "}
+                                        <span className="font-semibold">
+                                            {startIndex + 1}
+                                        </span>{" "}
+                                        –{" "}
                                         <span className="font-semibold">
                                             {startIndex + pageItems.length}
                                         </span>{" "}
                                         dari{" "}
-                                        <span className="font-semibold">{filtered.length}</span>{" "}
+                                        <span className="font-semibold">
+                                            {processed.length}
+                                        </span>{" "}
                                         data
                                     </p>
 
                                     <div className="flex items-center gap-1">
                                         <button
-                                            onClick={() => handleGoToPage(safeCurrentPage - 1)}
+                                            onClick={() =>
+                                                handleGoToPage(
+                                                    safeCurrentPage - 1,
+                                                )
+                                            }
                                             disabled={safeCurrentPage === 1}
                                             className="px-3 py-1.5 text-xs md:text-sm rounded-lg border border-slate-300 bg-white shadow-sm hover:bg-slate-50 transition disabled:opacity-40 disabled:cursor-not-allowed"
                                         >
@@ -656,7 +1004,11 @@ export default function InventoryDashboardClient({
                                             ) : (
                                                 <button
                                                     key={p}
-                                                    onClick={() => handleGoToPage(p as number)}
+                                                    onClick={() =>
+                                                        handleGoToPage(
+                                                            p as number,
+                                                        )
+                                                    }
                                                     className={`px-3 py-1.5 text-xs md:text-sm rounded-lg border ${p === safeCurrentPage
                                                             ? "bg-blue-600 text-white border-blue-600 shadow-sm"
                                                             : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
@@ -668,8 +1020,14 @@ export default function InventoryDashboardClient({
                                         )}
 
                                         <button
-                                            onClick={() => handleGoToPage(safeCurrentPage + 1)}
-                                            disabled={safeCurrentPage === pageCount}
+                                            onClick={() =>
+                                                handleGoToPage(
+                                                    safeCurrentPage + 1,
+                                                )
+                                            }
+                                            disabled={
+                                                safeCurrentPage === pageCount
+                                            }
                                             className="px-3 py-1.5 text-xs md:text-sm rounded-lg border border-slate-300 bg-white shadow-sm hover:bg-slate-50 transition disabled:opacity-40 disabled:cursor-not-allowed"
                                         >
                                             Next
