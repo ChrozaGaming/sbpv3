@@ -13,12 +13,14 @@ use tokio::sync::broadcast;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    // Load .env & init logger
     dotenvy::dotenv().ok();
     env_logger::init();
 
+    // Koneksi database
     let pool = db::connect().await.expect("DB connection error");
 
-    // channel global untuk WebSocket
+    // Channel global untuk WebSocket
     let (tx, _rx) = broadcast::channel::<String>(100);
 
     println!("🚀 SBPApp v3 Backend running on 0.0.0.0:8080");
@@ -33,13 +35,14 @@ async fn main() -> std::io::Result<()> {
                 db: pool.clone(),
                 tx: tx.clone(),
             }))
-            // API scope
+            // Semua REST API di bawah prefix /api
             .service(
                 web::scope("/api")
                     // 🔐 AUTH
                     .service(routes::auth::register_user)
                     .service(routes::auth::login_user)
-                    // PRODUCT MASTER
+
+                    // 📦 PRODUCT MASTER
                     .service(routes::product::list_products)
                     .service(routes::product::get_product)
                     .service(routes::product::get_product_by_kode)
@@ -47,7 +50,8 @@ async fn main() -> std::io::Result<()> {
                     .service(routes::product::create_product)
                     .service(routes::product::update_product)
                     .service(routes::product::delete_product)
-                    // STOK
+
+                    // 📊 STOK
                     .service(routes::stok::list_stok)
                     .service(routes::stok::get_stok)
                     .service(routes::stok::create_stok)
@@ -57,27 +61,24 @@ async fn main() -> std::io::Result<()> {
                     .service(routes::stok::list_recent_movements)
                     .service(routes::stok::create_movement)
                     .service(routes::stok::batch_stock_in)
-                    // SATUAN
+
+                    // 📏 SATUAN
                     .service(routes::satuan::list_satuan)
                     .service(routes::satuan::get_satuan)
                     .service(routes::satuan::create_satuan)
                     .service(routes::satuan::update_satuan)
                     .service(routes::satuan::delete_satuan)
-                    // SURAT JALAN
-                    .service(routes::surat_jalan::list_surat_jalan)
-                    .service(routes::surat_jalan::get_surat_jalan)
-                    .service(routes::surat_jalan::create_surat_jalan)
-                    .service(routes::surat_jalan::update_surat_jalan)
-                    .service(routes::surat_jalan::delete_surat_jalan)
-                    .service(routes::surat_jalan::list_surat_jalan_items)
-                    .service(routes::surat_jalan::create_surat_jalan_item)
-                    .service(routes::surat_jalan::get_surat_jalan_item)
-                    .service(routes::surat_jalan::update_surat_jalan_item)
-                    .service(routes::surat_jalan::delete_surat_jalan_item)
-                    // RETUR
+
+                    // 🚚 SURAT JALAN (modul: src/routes/suratjalan.rs)
+                    .service(routes::suratjalan::list_surat_jalan)
+                    .service(routes::suratjalan::get_surat_jalan)
+                    .service(routes::suratjalan::create_surat_jalan)
+                    .service(routes::suratjalan::delete_surat_jalan)
+
+                    // 🔁 RETUR
                     .service(routes::retur::create_retur),
             )
-            // WebSocket global (untuk dashboard frontend)
+            // 🌐 WebSocket global (dashboard / log real-time)
             .service(routes::ws::ws_handler)
     })
     .bind(("0.0.0.0", 8080))?

@@ -1,3 +1,5 @@
+// /Users/macbookpro/Documents/sbpbackend/src/models/stok.rs
+
 use chrono::{NaiveDate, NaiveDateTime};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
@@ -37,6 +39,8 @@ pub struct StockMovement {
     pub satuan_id: i32,
     pub sumber_tujuan: Option<String>,
     pub keterangan: Option<String>,
+    // <-- NEW: enum sbpv3.jenis_pemasukan (PEMBELIAN_PO / RETUR_BARANG), boleh NULL
+    pub jenis_pemasukan: Option<String>,
     pub created_at: NaiveDateTime,
 }
 

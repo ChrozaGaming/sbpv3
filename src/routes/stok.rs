@@ -118,8 +118,15 @@ pub async fn create_stok(
         INSERT INTO sbpv3.stok
         (kode, nama, brand, kategori, sub_kategori_id, harga_idr,
          stok_masuk, stok_keluar, stok_sisa,
-         satuan_id, lokasi, tanggal_entry, tanggal_masuk, tanggal_keluar, keterangan)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+         satuan_id, lokasi, tanggal_entry, tanggal_masuk, tanggal_keluar, keterangan,
+         created_at, updated_at)
+        VALUES (
+            $1,$2,$3,$4,$5,$6,
+            $7,$8,$9,
+            $10,$11,$12,$13,$14,$15,
+            (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta'),
+            (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta')
+        )
         "#
     )
     .bind(&body.kode)
@@ -183,7 +190,7 @@ pub async fn update_stok(
             tanggal_masuk = $12,
             tanggal_keluar = $13,
             keterangan = $14,
-            updated_at = NOW()
+            updated_at = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta')
         WHERE id = $15
         "#
     )
@@ -223,7 +230,7 @@ pub async fn update_stok(
     })))
 }
 
-/// DELETE /api/stok/{id}
+/// DELETE /api/stok/{id}]
 #[delete("/stok/{id}")]
 pub async fn delete_stok(
     state: web::Data<AppState>,
@@ -305,11 +312,12 @@ pub async fn list_recent_movements(
         SELECT
             m.id,
             m.stok_id,
-            m.jenis::TEXT,
+            m.jenis::TEXT               AS jenis,
             m.qty,
             m.satuan_id,
             m.sumber_tujuan,
             m.keterangan,
+            m.jenis_pemasukan::TEXT     AS jenis_pemasukan,
             m.created_at
         FROM sbpv3.stok_movements m
         ORDER BY m.created_at DESC
@@ -374,8 +382,16 @@ pub async fn create_movement(
     sqlx::query(
         r#"
         INSERT INTO sbpv3.stok_movements
-        (stok_id, jenis, qty, satuan_id, sumber_tujuan, keterangan)
-        VALUES ($1, $2::sbpv3.jenis_pergerakan, $3, $4, $5, $6)
+        (stok_id, jenis, qty, satuan_id, sumber_tujuan, keterangan, created_at)
+        VALUES (
+            $1,
+            $2::sbpv3.jenis_pergerakan,
+            $3,
+            $4,
+            $5,
+            $6,
+            (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta')
+        )
         "#
     )
     .bind(req.stok_id)
@@ -391,7 +407,7 @@ pub async fn create_movement(
         r#"
         UPDATE sbpv3.stok
         SET stok_sisa = $1,
-            updated_at = NOW()
+            updated_at = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta')
         WHERE id = $2
         "#,
         new_sisa,
@@ -421,6 +437,8 @@ pub async fn create_movement(
 /// - Ambil master product
 /// - Mapping ke satuan_id
 /// - Upsert ke sbpv3.stok (per kode+lokasi+satuan)
+///   * KECUALI untuk RETUR_BARANG: pakai kode stok "<kode_produk>-RET"
+///     dan nama "[SISA RETUR] <nama produk>" → entry stok terpisah.
 /// - Insert sbpv3.stok_movements jenis MASUK + jenis_pemasukan (PEMBELIAN_PO/RETUR_BARANG)
 /// - Broadcast event WebSocket "batch_stock_in"
 #[post("/stock-movements/batch-in")]
@@ -451,6 +469,7 @@ pub async fn batch_stock_in(
 
     let lokasi = body.lokasi.clone();
     let tanggal = body.tanggal;
+    let is_retur = jenis_pemasukan_db == "RETUR_BARANG";
 
     let mut tx = state.db.begin().await?;
 
@@ -482,7 +501,7 @@ pub async fn batch_stock_in(
         .fetch_optional(&mut *tx)
         .await?;
 
-                let p = match p {
+        let p = match p {
             Some(row) => row,
             None => {
                 return Err(ApiError::BadRequest(format!(
@@ -524,7 +543,22 @@ pub async fn batch_stock_in(
             }
         };
 
-        // Cek apakah stok untuk (kode+lokasi+satuan) sudah ada
+        // 🔑 Tentukan kode & nama stok:
+        // - Pembelian PO: kode stok = kode produk, nama = nama produk
+        // - Retur Barang: kode stok = "<kode_produk>-RET", nama = "[SISA RETUR] <nama produk>"
+        let stok_kode: String = if is_retur {
+            format!("{}-RET", p.kode)
+        } else {
+            p.kode.clone()
+        };
+
+        let stok_nama: String = if is_retur {
+            format!("[SISA RETUR] {}", p.nama)
+        } else {
+            p.nama.clone()
+        };
+
+        // Cek apakah stok untuk (stok_kode+lokasi+satuan) sudah ada
         let stok_row = sqlx::query!(
             r#"
             SELECT 
@@ -535,8 +569,8 @@ pub async fn batch_stock_in(
               AND satuan_id = $3
             FOR UPDATE
             "#,
-            p.kode,
-            lokasi,
+            &stok_kode,
+            &lokasi,
             satuan.id,
         )
         .fetch_optional(&mut *tx)
@@ -557,7 +591,7 @@ pub async fn batch_stock_in(
                 SET stok_masuk = $1,
                     stok_sisa = $2,
                     tanggal_masuk = $3,
-                    updated_at = NOW()
+                    updated_at = (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta')
                 WHERE id = $4
                 "#,
                 stok_masuk_baru,
@@ -577,20 +611,27 @@ pub async fn batch_stock_in(
                 INSERT INTO sbpv3.stok
                     (kode, nama, brand, kategori, sub_kategori_id, harga_idr,
                      stok_masuk, stok_keluar, stok_sisa,
-                     satuan_id, lokasi, tanggal_entry, tanggal_masuk, tanggal_keluar, keterangan)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,0,$8,$9,$10,$11,$12,NULL,NULL)
+                     satuan_id, lokasi, tanggal_entry, tanggal_masuk, tanggal_keluar, keterangan,
+                     created_at, updated_at)
+                VALUES (
+                    $1,$2,$3,$4,$5,$6,
+                    $7,0,$8,
+                    $9,$10,$11,$12,NULL,NULL,
+                    (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta'),
+                    (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta')
+                )
                 RETURNING id, stok_sisa
                 "#,
-                p.kode,
-                p.nama,
-                p.brand,
-                p.kategori,
+                &stok_kode,
+                &stok_nama,
+                &p.brand,
+                &p.kategori,
                 0_i32,
                 p.harga_idr,
                 qty_i32,
                 qty_i32,
                 satuan.id,
-                lokasi,
+                &lokasi,
                 tanggal,
                 tanggal
             )
@@ -605,8 +646,17 @@ pub async fn batch_stock_in(
         sqlx::query(
             r#"
             INSERT INTO sbpv3.stok_movements
-                (stok_id, jenis, qty, satuan_id, sumber_tujuan, keterangan, jenis_pemasukan)
-            VALUES ($1, 'MASUK'::sbpv3.jenis_pergerakan, $2, $3, NULL, NULL, $4::sbpv3.jenis_pemasukan)
+                (stok_id, jenis, qty, satuan_id, sumber_tujuan, keterangan, jenis_pemasukan, created_at)
+            VALUES (
+                $1,
+                'MASUK'::sbpv3.jenis_pergerakan,
+                $2,
+                $3,
+                NULL,
+                NULL,
+                $4::sbpv3.jenis_pemasukan,
+                (CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Jakarta')
+            )
             "#
         )
         .bind(stok_id)
@@ -620,7 +670,8 @@ pub async fn batch_stock_in(
             "stok_id": stok_id,
             "product_id": p.id,
             "product_kode": p.kode,
-            "nama": p.nama,
+            "stok_kode": stok_kode,
+            "nama": stok_nama,
             "brand": p.brand,
             "qty": qty_i32,
             "satuan": p.satuan,
