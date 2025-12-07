@@ -19,8 +19,16 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const result = await postJSON("/auth/login", form);
-      // asumsi backend mengirim { token: "..." }
+      // backend: { token: "...", user: { id, nama_lengkap, email } }
       localStorage.setItem("token", result.token);
+
+      if (result.user) {
+        localStorage.setItem("user", JSON.stringify(result.user));
+        if (result.user.nama_lengkap) {
+          localStorage.setItem("nama_lengkap", result.user.nama_lengkap);
+        }
+      }
+
       alert("Login sukses!");
       window.location.href = "/dashboard";
     } catch (err: any) {

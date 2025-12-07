@@ -16,6 +16,7 @@ import {
   ArrowDownCircle,
   FileText,
   Truck,
+  CalendarCheck, // ⬅️ tambahan icon untuk Absensi
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { usePathname } from "next/navigation";
@@ -37,11 +38,13 @@ export default function Sidebar({ open, setOpen }: Props) {
 
   const menuTop: NavLink[] = [
     { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-    { label: "Proyek", href: "/dashboard/projects", icon: FolderKanban },
+    // { label: "Proyek", href: "/dashboard/projects", icon: FolderKanban },
   ];
 
   const menuBottom: NavLink[] = [
-    { label: "Tim Lapangan", href: "/dashboard/team", icon: Users },
+    // { label: "Tim Lapangan", href: "/dashboard/team", icon: Users },
+    // ⬇️ ROUTE ABSENSI DITAMBAHKAN DI SINI (bagian Operasional)
+    { label: "Absensi", href: "/dashboard/absensi", icon: CalendarCheck },
   ];
 
   const stokLinks: NavLink[] = [
