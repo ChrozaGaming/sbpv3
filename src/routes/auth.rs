@@ -64,10 +64,15 @@ pub async fn login_user(
 ) -> Result<HttpResponse, ApiError> {
     let body = body.into_inner();
 
+    // Ambil id, nama_lengkap, email, dan password_hash
     let user = sqlx::query!(
         r#"
-        SELECT id::text, password_hash 
-        FROM sbpv3.users 
+        SELECT 
+            id::text,
+            nama_lengkap,
+            email,
+            password_hash
+        FROM sbpv3.users
         WHERE email = $1
         "#,
         body.email
@@ -93,9 +98,13 @@ pub async fn login_user(
         .id
         .ok_or(ApiError::InternalError("User ID null".into()))?;
 
+    // nama_lengkap & email di DB bertipe NOT NULL → String, bukan Option
+    let nama_lengkap: String = user.nama_lengkap;
+    let email: String = user.email;
+
     // Claims JWT
     let claims = JwtClaims {
-        sub: user_id,
+        sub: user_id.clone(),
         exp: (chrono::Utc::now().timestamp() + 86400) as usize, // +1 hari
     };
 
@@ -109,5 +118,13 @@ pub async fn login_user(
     )
     .map_err(|e| ApiError::InternalError(format!("JWT error: {}", e)))?;
 
-    Ok(HttpResponse::Ok().json(serde_json::json!({ "token": token })))
+    // Kembalikan token + data user (dipakai frontend)
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "token": token,
+        "user": {
+            "id": user_id,
+            "nama_lengkap": nama_lengkap,
+            "email": email
+        }
+    })))
 }

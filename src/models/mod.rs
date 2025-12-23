@@ -1,5 +1,9 @@
+pub mod user;
+pub mod masterpegawai;
 pub mod stok;
 pub mod satuan;
 pub mod product;
-pub mod user;
-pub mod suratjalan; // ✅ pakai modul baru
+pub mod suratjalan;
+pub mod absensi;
+pub mod retur;
+pub mod kontrak_kerja;
