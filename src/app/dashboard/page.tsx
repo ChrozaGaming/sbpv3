@@ -4,13 +4,13 @@ import { useState } from "react";
 import Sidebar from "@/components/layout/Sidebar";
 import Header from "@/components/layout/Header";
 import Footer from "@/components/layout/Footer";
-import { 
-  BarChart3, 
-  Hammer, 
-  Package, 
-  Users, 
-  ArrowUpRight, 
-  TrendingUp 
+import {
+  BarChart3,
+  Hammer,
+  Package,
+  Users,
+  ArrowUpRight,
+  TrendingUp
 } from "lucide-react";
 
 export default function DashboardPage() {

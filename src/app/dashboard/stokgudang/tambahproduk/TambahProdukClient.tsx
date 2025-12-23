@@ -109,7 +109,7 @@ function normalizeProductNameForSave(raw: string): string {
     // Ganti banyak spasi berturut-turut menjadi satu spasi
     const collapsed = normalized.replace(/\s+/g, " ");
     return collapsed.trim();
-}   
+}
 
 // --- MAIN COMPONENT ---
 
@@ -564,7 +564,7 @@ export default function TambahProdukClient({
         : "bg-blue-600 hover:bg-blue-700 shadow-blue-500/50";
 
     return (
-        <div className="flex h-[100dvh] w-full max-w-full bg-slate-100 text-slate-800 overflow-hidden">
+        <div className="flex h-dvh w-full max-w-full bg-slate-100 text-slate-800 overflow-hidden">
             {/* Sidebar */}
             <div className="shrink-0">
                 <Sidebar open={open} setOpen={setOpen} />
