@@ -49,7 +49,7 @@ fn build_cors(allowed_origins: Arc<Vec<String>>) -> Cors {
         .max_age(3600)
 }
 
-/// Kelompokkan service API biar main.rs gak “panjang banget”
+/// Kelompokkan service API biar main.rs gak "panjang banget"
 /// Catatan: semua route di routes::* harus TANPA prefix "/api"
 fn config_api(cfg: &mut web::ServiceConfig) {
     cfg
@@ -69,6 +69,24 @@ fn config_api(cfg: &mut web::ServiceConfig) {
         .service(routes::kontrak_kerja::create_kontrak_kerja)
         .service(routes::kontrak_kerja::update_kontrak_kerja)
         .service(routes::kontrak_kerja::delete_kontrak_kerja)
+        // Kasbon (Cash Advance)
+        .service(routes::kasbon::list_kasbon)
+        .service(routes::kasbon::get_kasbon)
+        .service(routes::kasbon::create_kasbon)
+        .service(routes::kasbon::update_kasbon)
+        .service(routes::kasbon::delete_kasbon)
+        // ── HAPUS cicilan lama, ganti dengan mutasi ──
+        // .service(routes::kasbon::list_cicilan)      ← DIHAPUS
+        // .service(routes::kasbon::update_cicilan)     ← DIHAPUS
+        // Kasbon Mutasi (Riwayat Pembayaran — menggantikan cicilan)
+        .service(routes::kasbon_mutasi::list_mutasi)
+        .service(routes::kasbon_mutasi::create_mutasi)
+        // Penggajian (Payroll)
+        .service(routes::penggajian::list_penggajian)
+        .service(routes::penggajian::get_penggajian)
+        .service(routes::penggajian::create_penggajian)
+        .service(routes::penggajian::update_penggajian)
+        .service(routes::penggajian::delete_penggajian)
         // Product
         .service(routes::product::list_products)
         .service(routes::product::get_product)
@@ -128,6 +146,8 @@ async fn main() -> std::io::Result<()> {
     println!("🌐 FRONTEND_ORIGIN(s) = {}", origins.join(", "));
     println!("🔌 WS MasterPegawai   = ws://{}/ws/pegawai", host_for_print);
     println!("🔌 WS KontrakKerja    = ws://{}/ws/kontrakkerja", host_for_print);
+    println!("🔌 WS Kasbon          = ws://{}/ws/kasbon", host_for_print);
+    println!("🔌 WS Penggajian      = ws://{}/ws/penggajian", host_for_print);
     println!("🔌 WS Absensi         = ws://{}/ws/absensi", host_for_print);
 
     let app_state = web::Data::new(AppState {
@@ -158,6 +178,8 @@ async fn main() -> std::io::Result<()> {
             // WEBSOCKET
             .service(routes::masterpegawai::ws_masterpegawai_handler)
             .service(routes::kontrak_kerja::ws_kontrak_kerja_handler)
+            .service(routes::kasbon::ws_kasbon_handler)
+            .service(routes::penggajian::ws_penggajian_handler)
             .service(routes::absensi::absensi_ws_handler)
     })
         .bind(bind_addr)?

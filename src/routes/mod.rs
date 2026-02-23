@@ -9,4 +9,6 @@ pub mod ws;
 
 pub mod masterpegawai;
 pub mod kontrak_kerja;
-
+pub mod kasbon;
+pub mod penggajian;
+pub mod kasbon_mutasi;
