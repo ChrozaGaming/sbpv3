@@ -75,9 +75,6 @@ fn config_api(cfg: &mut web::ServiceConfig) {
         .service(routes::kasbon::create_kasbon)
         .service(routes::kasbon::update_kasbon)
         .service(routes::kasbon::delete_kasbon)
-        // ── HAPUS cicilan lama, ganti dengan mutasi ──
-        // .service(routes::kasbon::list_cicilan)      ← DIHAPUS
-        // .service(routes::kasbon::update_cicilan)     ← DIHAPUS
         // Kasbon Mutasi (Riwayat Pembayaran — menggantikan cicilan)
         .service(routes::kasbon_mutasi::list_mutasi)
         .service(routes::kasbon_mutasi::create_mutasi)
@@ -116,6 +113,16 @@ fn config_api(cfg: &mut web::ServiceConfig) {
         .service(routes::suratjalan::get_surat_jalan)
         .service(routes::suratjalan::create_surat_jalan)
         .service(routes::suratjalan::delete_surat_jalan)
+        // Invoice (Tagihan)
+        .service(routes::invoice::list_invoice)
+        .service(routes::invoice::stats_invoice)
+        .service(routes::invoice::get_invoice)
+        .service(routes::invoice::create_invoice)
+        .service(routes::invoice::update_invoice)
+        .service(routes::invoice::delete_invoice)
+        // Invoice Pembayaran (Riwayat Bayar)
+        .service(routes::invoice_pembayaran::list_pembayaran)
+        .service(routes::invoice_pembayaran::create_pembayaran)
         // Retur
         .service(routes::retur::create_retur)
         // Absensi
@@ -149,6 +156,7 @@ async fn main() -> std::io::Result<()> {
     println!("🔌 WS Kasbon          = ws://{}/ws/kasbon", host_for_print);
     println!("🔌 WS Penggajian      = ws://{}/ws/penggajian", host_for_print);
     println!("🔌 WS Absensi         = ws://{}/ws/absensi", host_for_print);
+    println!("🔌 WS Invoice         = ws://{}/ws/invoice", host_for_print);
 
     let app_state = web::Data::new(AppState {
         db: pool.clone(),
@@ -174,13 +182,15 @@ async fn main() -> std::io::Result<()> {
                     }))
                 }),
             )
+            // ── REST API (semua di bawah /api) ──
             .service(web::scope("/api").configure(config_api))
-            // WEBSOCKET
+            // ── WEBSOCKET (di root, tanpa /api) ──
             .service(routes::masterpegawai::ws_masterpegawai_handler)
             .service(routes::kontrak_kerja::ws_kontrak_kerja_handler)
             .service(routes::kasbon::ws_kasbon_handler)
             .service(routes::penggajian::ws_penggajian_handler)
             .service(routes::absensi::absensi_ws_handler)
+            .service(routes::invoice::ws_invoice_handler)
     })
         .bind(bind_addr)?
         .run()
