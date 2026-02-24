@@ -471,7 +471,8 @@ export default function Page() {
 
     /* Load data */
     useEffect(() => {
-        let alive = true; const ac = new AbortController();
+        let alive = true;
+        const ac = new AbortController();
         (async () => {
             try {
                 setRowsError(null); setLoadingRows(true); setKontrakLoading(true);
@@ -482,19 +483,39 @@ export default function Page() {
                 if (!alive) return;
                 setRows(Array.isArray(pData) ? pData : []);
                 setAllKontrak(Array.isArray(kData) ? kData : []);
-            } catch (e: any) { if (!alive) return; setRowsError(e?.message ?? "Gagal memuat"); }
-            finally { if (alive) { setLoadingRows(false); setKontrakLoading(false); } }
+            } catch (e: any) {
+                if (!alive || e?.name === "AbortError") return;
+                setRowsError(e?.message ?? "Gagal memuat");
+            } finally {
+                if (alive) { setLoadingRows(false); setKontrakLoading(false); }
+            }
         })();
         return () => { alive = false; ac.abort(); };
     }, []);
 
     const requestedRef = useRef<Set<string>>(new Set());
     useEffect(() => {
-        if (!rows.length) return; const ac = new AbortController(); let alive = true;
-        const missing = Array.from(new Set(rows.map((r) => r.pegawai_id).filter(Boolean))).filter((id) => !pegawaiCache.has(id) && !requestedRef.current.has(id)).slice(0, 50);
+        if (!rows.length) return;
+        const ac = new AbortController();
+        let alive = true;
+        const missing = Array.from(new Set(rows.map((r) => r.pegawai_id).filter(Boolean)))
+            .filter((id) => !pegawaiCache.has(id) && !requestedRef.current.has(id))
+            .slice(0, 50);
         missing.forEach((id) => requestedRef.current.add(id));
         let idx = 0;
-        async function w() { while (alive && idx < missing.length) { const id = missing[idx++]; try { const r = await apiGetPegawaiById(id, ac.signal); if (!alive) return; if (r?.pegawai_id) upsertPegawaiCache(r); } catch { } } }
+        async function w() {
+            while (alive && idx < missing.length) {
+                const id = missing[idx++];
+                try {
+                    const r = await apiGetPegawaiById(id, ac.signal);
+                    if (!alive) return;
+                    if (r?.pegawai_id) upsertPegawaiCache(r);
+                } catch (e: any) {
+                    if (e?.name === "AbortError") return;
+                    // silent fail for individual pegawai fetch
+                }
+            }
+        }
         (async () => { await Promise.all(Array.from({ length: Math.min(6, missing.length) }, () => w())); })();
         return () => { alive = false; ac.abort(); };
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -541,9 +562,12 @@ export default function Page() {
     }, [rows, query, fStatus, fTipe, pegawaiCache]);
 
     useEffect(() => { setPage(1); }, [query, fStatus, fTipe]);
-    const totalItems = filtered.length; const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
-    const clampedPage = Math.min(page, totalPages); const startIndex = (clampedPage - 1) * PAGE_SIZE;
-    const endIndex = Math.min(startIndex + PAGE_SIZE, totalItems); const paged = filtered.slice(startIndex, endIndex);
+    const totalItems = filtered.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
+    const clampedPage = Math.min(page, totalPages);
+    const startIndex = (clampedPage - 1) * PAGE_SIZE;
+    const endIndex = Math.min(startIndex + PAGE_SIZE, totalItems);
+    const paged = filtered.slice(startIndex, endIndex);
     useEffect(() => { if (page > totalPages) setPage(totalPages); }, [page, totalPages]);
 
     const computed = useMemo(() => {
@@ -573,8 +597,12 @@ export default function Page() {
                 tanggal_cair: k.tanggal_cair ?? "", metode_potong: k.metode_potong,
                 enabled: false, mode: "lunas", nominal_bayar: "",
             })));
-        } catch { setKasbonLines([]); }
-        finally { setKasbonLoading(false); }
+        } catch (e: any) {
+            if (e?.name === "AbortError") return;
+            setKasbonLines([]);
+        } finally {
+            setKasbonLoading(false);
+        }
     }
 
     /* Form helpers */
@@ -639,7 +667,7 @@ export default function Page() {
         return null;
     }
 
-    /* Save — creates mutasi records via backend API */
+    /* Save */
     async function saveForm() {
         const err = validateForm(form); if (err) { setFormError(err); return; }
         setSaving(true); setFormError(null);
@@ -670,13 +698,6 @@ export default function Page() {
                 setRows((p) => p.map((x) => (x.penggajian_id === resultRow.penggajian_id ? resultRow : x)));
             }
 
-            /**
-             * Create mutasi records for each enabled kasbon line.
-             * POST /api/kasbon/{id}/mutasi atomically:
-             * - Inserts t_kasbon_mutasi record
-             * - Updates saldo_kasbon
-             * - Sets status = 'lunas' if saldo reaches 0
-             */
             const enabledLines = kasbonLines.filter((l) => l.enabled && lineEffective(l) > 0);
             const mutasiErrors: string[] = [];
             for (const line of enabledLines) {
@@ -702,8 +723,11 @@ export default function Page() {
             msg += `\n\nCetak slip gaji sekarang?`;
 
             if (confirm(msg)) { printSlipGaji(resultRow, pegName); }
-        } catch (e: any) { setFormError(e?.message ?? "Gagal menyimpan"); }
-        finally { setSaving(false); }
+        } catch (e: any) {
+            setFormError(e?.message ?? "Gagal menyimpan");
+        } finally {
+            setSaving(false);
+        }
     }
 
     async function deleteRow(id: string) { if (!confirm(`Hapus slip gaji ${id}?`)) return; try { await apiDeletePenggajian(id); setRows((p) => p.filter((r) => r.penggajian_id !== id)); } catch (e: any) { alert(e?.message ?? "Gagal"); } }

@@ -20,6 +20,8 @@ import {
   Receipt,
   Banknote,
   ClipboardList,
+  Wallet,
+  FilePlus2,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { usePathname } from "next/navigation";
@@ -55,9 +57,6 @@ type AccordionDef = {
 
 /* ═══════════════════════════════════════════════════════════════
    Smooth accordion — CSS grid trick
-   - Content stays in DOM (no mount/unmount reflow)
-   - Height animates from 0fr → 1fr
-   - No scroll jump, no layout shift
    ═══════════════════════════════════════════════════════════════ */
 
 function AccordionPanel({
@@ -119,6 +118,18 @@ export default function Sidebar({ open, setOpen }: Props) {
       ],
     },
     {
+      key: "keuangan",
+      label: "Keuangan",
+      hint: "Invoice & tagihan",
+      icon: Wallet,
+      activeAccent: "border-amber-500/70",
+      activeBg: "bg-slate-900 text-amber-100",
+      activeIconBg: "bg-amber-600/90 text-slate-50",
+      links: [
+        { label: "Invoice", href: "/dashboard/keuangan/invoice", icon: Receipt },
+      ],
+    },
+    {
       key: "pegawai",
       label: "Pegawai",
       hint: "Data, kontrak, kasbon & gajian",
@@ -172,19 +183,17 @@ export default function Sidebar({ open, setOpen }: Props) {
         href={item.href}
         onClick={() => setOpen(false)}
         className={`group flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors
-        ${
-          isActive
+        ${isActive
             ? "bg-slate-800/90 text-slate-50 shadow-sm"
             : "text-slate-300 hover:bg-slate-800/60 hover:text-slate-50"
-        }`}
+          }`}
       >
         <span
           className={`flex h-8 w-8 items-center justify-center rounded-md bg-slate-900/80 text-slate-200 transition-colors
-          ${
-            isActive
+          ${isActive
               ? "bg-indigo-600/90 text-white shadow-[0_0_0_1px_rgba(129,140,248,0.6)]"
               : "group-hover:bg-slate-800/90"
-          }`}
+            }`}
         >
           <item.icon size={18} />
         </span>
@@ -203,19 +212,17 @@ export default function Sidebar({ open, setOpen }: Props) {
         href={item.href}
         onClick={() => setOpen(false)}
         className={`group flex items-center gap-2 rounded-md px-3 py-2 text-xs transition-colors
-        ${
-          isActive
+        ${isActive
             ? "bg-slate-900 text-indigo-100 shadow-sm"
             : "text-slate-300 hover:bg-slate-900/70 hover:text-slate-50"
-        }`}
+          }`}
       >
         <span
           className={`flex h-6 w-6 items-center justify-center rounded-md text-slate-200
-          ${
-            isActive
+          ${isActive
               ? "bg-indigo-600/90 text-slate-50"
               : "bg-slate-800/90 group-hover:bg-slate-700"
-          }`}
+            }`}
         >
           <Icon size={14} />
         </span>
@@ -237,11 +244,10 @@ export default function Sidebar({ open, setOpen }: Props) {
           onClick={() => togglePanel(acc.key)}
           aria-expanded={panelOpen}
           className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm border transition-colors
-          ${
-            active
+          ${active
               ? `${acc.activeAccent} ${acc.activeBg}`
               : "border-slate-800 bg-slate-950/80 text-slate-200 hover:bg-slate-900"
-          }`}
+            }`}
         >
           <span className="flex items-center gap-3">
             <span
@@ -257,9 +263,8 @@ export default function Sidebar({ open, setOpen }: Props) {
           </span>
           <ChevronDown
             size={16}
-            className={`text-slate-400 transition-transform duration-200 ${
-              panelOpen ? "rotate-180" : ""
-            }`}
+            className={`text-slate-400 transition-transform duration-200 ${panelOpen ? "rotate-180" : ""
+              }`}
           />
         </button>
 
@@ -278,9 +283,8 @@ export default function Sidebar({ open, setOpen }: Props) {
     <>
       {/* MOBILE BACKDROP */}
       <div
-        className={`fixed inset-0 z-30 bg-black/60 backdrop-blur-sm transition-opacity md:hidden ${
-          open ? "opacity-100" : "pointer-events-none opacity-0"
-        }`}
+        className={`fixed inset-0 z-30 bg-black/60 backdrop-blur-sm transition-opacity md:hidden ${open ? "opacity-100" : "pointer-events-none opacity-0"
+          }`}
         onClick={() => setOpen(false)}
       />
 
